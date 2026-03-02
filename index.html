@@ -581,6 +581,8 @@ function productionPhase() {
                 else if (node.type.produce === 'units') node.units += node.type.amount;
             } else {
                 if (node.type.produce === 'units') node.units += node.type.amount;
+                else if (node.type.produce === 'gold') gameState.aiResources.gold += node.type.amount;
+                else if (node.type.produce === 'food') gameState.aiResources.food += node.type.amount;
             }
         }
         if (node.isolated && node.owner) {
@@ -597,15 +599,16 @@ function executeAI() {
     
     let actions = [];
     
-    // 1. 招募阶段
+    // 1. 招募阶段 - AI在任何非孤立节点都能征兵
+    let recruited = 0;
     aiNodes.forEach(node => {
-        if (!node.isolated && node.type === NODE_TYPES.BARRACKS && Math.random() < diff.recruitChance) {
-            if (gameState.aiResources.gold >= 10) {
-                gameState.aiResources.gold -= 10;
-                node.units += 3;
-            }
+        if (!node.isolated && node.units < 15 && gameState.aiResources.gold >= 10 && Math.random() < diff.recruitChance * 0.7) {
+            gameState.aiResources.gold -= 10;
+            node.units += 3;
+            recruited++;
         }
     });
+    if (recruited > 0) log(`👹 AI在${recruited}个节点征召兵力`, 'ai');
     
     // 2. 防守首都
     const capital = aiNodes.find(n => n.type === NODE_TYPES.CAPITAL);
