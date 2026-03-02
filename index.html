@@ -87,14 +87,17 @@
             100% { transform: scale(1); }
         }
         .attack-line {
-            position: absolute; height: 3px; background: linear-gradient(90deg, #ff4444, #ff8844);
-            transform-origin: left center; z-index: 10; pointer-events: none;
+            position: fixed; height: 4px; 
+            background: linear-gradient(90deg, transparent, #ff4444 20%, #ff8844 80%, transparent);
+            transform-origin: left center; z-index: 1000; pointer-events: none;
+            border-radius: 2px; box-shadow: 0 0 10px rgba(255, 68, 68, 0.8);
             animation: attackLine 0.5s ease forwards;
         }
         @keyframes attackLine {
-            0% { opacity: 0; transform: scaleX(0); }
-            20% { opacity: 1; }
-            100% { opacity: 0; transform: scaleX(1); }
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
         }
         .node-type { font-size: 24px; margin-bottom: 4px; }
         .node-units { font-weight: bold; font-size: 16px; background: rgba(0,0,0,0.5); padding: 2px 10px; border-radius: 12px; }
@@ -454,7 +457,6 @@ function executeTrade() {
 }
 
 function showAttackLine(fromNode, toNode) {
-    const map = document.getElementById('map');
     const fromEl = document.getElementById('node-' + fromNode.id);
     const toEl = document.getElementById('node-' + toNode.id);
     const line = document.createElement('div');
@@ -462,12 +464,11 @@ function showAttackLine(fromNode, toNode) {
     
     const fromRect = fromEl.getBoundingClientRect();
     const toRect = toEl.getBoundingClientRect();
-    const mapRect = map.getBoundingClientRect();
     
-    const x1 = fromRect.left + fromRect.width/2 - mapRect.left;
-    const y1 = fromRect.top + fromRect.height/2 - mapRect.top;
-    const x2 = toRect.left + toRect.width/2 - mapRect.left;
-    const y2 = toRect.top + toRect.height/2 - mapRect.top;
+    const x1 = fromRect.left + fromRect.width/2;
+    const y1 = fromRect.top + fromRect.height/2;
+    const x2 = toRect.left + toRect.width/2;
+    const y2 = toRect.top + toRect.height/2;
     
     const length = Math.sqrt(Math.pow(x2-x1, 2) + Math.pow(y2-y1, 2));
     const angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
@@ -477,7 +478,7 @@ function showAttackLine(fromNode, toNode) {
     line.style.top = y1 + 'px';
     line.style.transform = 'rotate(' + angle + 'deg)';
     
-    map.appendChild(line);
+    document.body.appendChild(line);
     setTimeout(() => { if(line.parentNode) line.parentNode.removeChild(line); }, 600);
 }
 
