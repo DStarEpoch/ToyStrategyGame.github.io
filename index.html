@@ -628,37 +628,44 @@ function executeAI() {
     }
     
     // 3. 进攻决策 - 智能评估每个目标
-    const attackOptions = [];
-    aiNodes.forEach(node => {
-        if (node.units <= 2) return;
-        getNeighbors(node).forEach(target => {
-            if (target.owner !== 'enemy') {
-                const advantage = node.units - target.units;
-                const targetValue = (target.type === NODE_TYPES.CAPITAL ? 100 : 
-                                    target.type === NODE_TYPES.BARRACKS ? 30 :
-                                    target.type === NODE_TYPES.MINE ? 25 :
-                                    target.type === NODE_TYPES.FARM ? 20 : 10) + 
-                                    (target.owner === 'player' ? 15 : 0);
-                const isolationBonus = target.owner === 'player' && target.isolated ? 20 : 0;
-                const score = advantage * 2 + targetValue + isolationBonus;
-                attackOptions.push({ from: node, to: target, score, advantage });
-            }
+    let attackCount = 0;
+    const maxAttacks = gameState.difficulty === 'hard' ? 5 : gameState.difficulty === 'normal' ? 3 : 2;
+    
+    for (let i = 0; i < maxAttacks; i++) {
+        // 每次重新获取当前AI节点（包括新占领的）
+        const currentAiNodes = gameState.nodes.filter(n => n.owner === 'enemy' && n.units > 2);
+        if (currentAiNodes.length === 0) break;
+        
+        // 构建所有可能的攻击选项
+        const attackOptions = [];
+        currentAiNodes.forEach(node => {
+            getNeighbors(node).forEach(target => {
+                if (target.owner !== 'enemy') {
+                    const advantage = node.units - target.units;
+                    const targetValue = (target.type === NODE_TYPES.CAPITAL ? 100 : 
+                                        target.type === NODE_TYPES.BARRACKS ? 30 :
+                                        target.type === NODE_TYPES.MINE ? 25 :
+                                        target.type === NODE_TYPES.FARM ? 20 : 10) + 
+                                        (target.owner === 'player' ? 15 : 0);
+                    const isolationBonus = target.owner === 'player' && target.isolated ? 20 : 0;
+                    const score = advantage * 2 + targetValue + isolationBonus;
+                    attackOptions.push({ from: node, to: target, score, advantage });
+                }
+            });
         });
-    });
-    
-    // 按分数排序并执行攻击
-    attackOptions.sort((a, b) => b.score - a.score);
-    const usedNodes = new Set();
-    
-    attackOptions.forEach(opt => {
-        if (usedNodes.has(opt.from.id) || opt.from.units <= 2) return;
-        if (opt.advantage < -2 && Math.random() > diff.aggression) return;
-        if (opt.advantage < 0 && opt.to.type !== NODE_TYPES.CAPITAL) return;
         
-        usedNodes.add(opt.from.id);
+        if (attackOptions.length === 0) break;
         
-        // 执行攻击动画
-        setTimeout(() => showAttackLine(opt.from, opt.to), Math.random() * 500);
+        // 选最优攻击
+        attackOptions.sort((a, b) => b.score - a.score);
+        const opt = attackOptions[0];
+        
+        // 检查是否值得攻击
+        if (opt.advantage < -3) break; // 太劣势，停止进攻
+        if (opt.advantage < 0 && opt.to.type !== NODE_TYPES.CAPITAL && Math.random() > diff.aggression) continue;
+        
+        // 执行攻击
+        setTimeout(() => showAttackLine(opt.from, opt.to), Math.random() * 300);
         
         const attackUnits = Math.min(opt.from.units - 1, Math.floor(opt.from.units * (0.6 + Math.random() * 0.3)));
         opt.from.units -= attackUnits;
@@ -674,7 +681,8 @@ function executeAI() {
             opt.to.units = Math.max(1, Math.floor(opt.to.units * 0.7));
             actions.push({ type: 'attack', target: opt.to });
         }
-    });
+        attackCount++;
+    }
     
     // 记录AI行动
     const captures = actions.filter(a => a.type === 'capture').length;
