@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>节点战争 - 补给与贸易</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #16213e 100%);
+            color: #eee; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            min-height: 100vh; overflow-x: hidden;
+        }
+        .game-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; color: #e94560; margin-bottom: 20px; text-shadow: 0 0 30px rgba(233, 69, 96, 0.6); }
+        .top-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.08); backdrop-filter: blur(10px);
+            padding: 15px 25px; border-radius: 16px; margin-bottom: 20px;
+            flex-wrap: wrap; gap: 15px; border: 1px solid rgba(255,255,255,0.1);
+        }
+        .resources { display: flex; gap: 25px; flex-wrap: wrap; }
+        .resource { 
+            display: flex; align-items: center; gap: 8px; font-size: 16px;
+            background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 10px;
+        }
+        .resource-icon { font-size: 22px; }
+        .resource-value { font-weight: bold; color: #ffd700; font-size: 18px; }
+        .turn-btn {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            color: white; border: none; padding: 12px 30px;
+            font-size: 16px; border-radius: 12px; cursor: pointer;
+            transition: all 0.3s; box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+        }
+        .turn-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233, 69, 96, 0.6); }
+        .turn-btn:disabled { background: #555; cursor: not-allowed; }
+        .main-area { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+        @media (max-width: 900px) { .main-area { grid-template-columns: 1fr; } }
+        .map-container { 
+            background: rgba(0,0,0,0.4); border-radius: 16px; padding: 25px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .map { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; position: relative; }
+        .node {
+            aspect-ratio: 1; border-radius: 14px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent; position: relative;
+            min-height: 85px; font-size: 12px;
+            background: linear-gradient(145deg, rgba(74,85,104,0.9), rgba(45,55,72,0.9));
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .node:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 8px 25px rgba(0,0,0,0.5); }
+        .node.player { 
+            background: linear-gradient(145deg, #3182ce, #2c5282);
+            border-color: #63b3ed; box-shadow: 0 0 20px rgba(99, 179, 237, 0.4);
+        }
+        .node.enemy { 
+            background: linear-gradient(145deg, #c53030, #9b2c2c);
+            border-color: #fc8181; box-shadow: 0 0 20px rgba(252, 129, 129, 0.3);
+        }
+        .node.selected { 
+            border-color: #ffd700 !important; 
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
+            50% { box-shadow: 0 0 35px rgba(255, 215, 0, 0.9); }
+        }
+        .node.isolated { opacity: 0.6; filter: grayscale(0.5); border-style: dashed; }
+        .node.attacking { animation: shake 0.4s ease; }
+        .node.defending { animation: flash 0.4s ease; }
+        .node.captured { animation: capture 0.6s ease; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        @keyframes flash {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.5); }
+        }
+        @keyframes capture {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); filter: brightness(1.5); }
+            100% { transform: scale(1); }
+        }
+        .attack-line {
+            position: absolute; height: 3px; background: linear-gradient(90deg, #ff4444, #ff8844);
+            transform-origin: left center; z-index: 10; pointer-events: none;
+            animation: attackLine 0.5s ease forwards;
+        }
+        @keyframes attackLine {
+            0% { opacity: 0; transform: scaleX(0); }
+            20% { opacity: 1; }
+            100% { opacity: 0; transform: scaleX(1); }
+        }
+        .node-type { font-size: 24px; margin-bottom: 4px; }
+        .node-units { font-weight: bold; font-size: 16px; background: rgba(0,0,0,0.5); padding: 2px 10px; border-radius: 12px; }
+        .node-supply { position: absolute; top: 6px; right: 6px; font-size: 10px; }
+        .sidebar { display: flex; flex-direction: column; gap: 15px; }
+        .panel { background: rgba(255,255,255,0.06); border-radius: 16px; padding: 18px; border: 1px solid rgba(255,255,255,0.08); }
+        .panel h3 { color: #e94560; margin-bottom: 14px; font-size: 17px; }
+        .action-btn { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .action-btn.attack { background: linear-gradient(135deg, #e94560, #ff6b6b); color: white; }
+        .action-btn.trade { background: linear-gradient(135deg, #38a169, #48bb78); color: white; }
+        .action-btn.produce { background: linear-gradient(135deg, #3182ce, #4299e1); color: white; }
+        .action-btn:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+        .log { max-height: 220px; overflow-y: auto; font-size: 12px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 10px; }
+        .log-entry { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .log-entry.battle { color: #ff6b6b; }
+        .log-entry.ai { color: #fc8181; }
+        .ai-thinking {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); padding: 30px 50px; border-radius: 16px;
+            font-size: 20px; color: #fc8181; display: none; z-index: 100;
+            border: 2px solid #fc8181;
+        }
+        .ai-thinking.show { display: block; }
+        .victory-modal, .defeat-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 1000;
+        }
+        .victory-modal.show, .defeat-modal.show { display: flex; }
+        .modal-content { background: linear-gradient(145deg, #1a1a3e, #16213e); padding: 50px; border-radius: 24px; text-align: center; border: 2px solid; }
+        .victory-modal .modal-content { border-color: #48bb78; }
+        .defeat-modal .modal-content { border-color: #fc8181; }
+        .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; margin-left: 5px; }
+        .status-badge.supply { background: #276749; color: #9ae6b4; }
+        .status-badge.isolated { background: #742a2a; color: #feb2b2; }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>⚔️ 节点战争：补给与贸易</h1>
+        <div class="top-bar">
+            <div class="resources">
+                <div class="resource"><span class="resource-icon">🪙</span><span>金币: <span class="resource-value" id="gold">100</span></span></div>
+                <div class="resource"><span class="resource-icon">🌾</span><span>粮食: <span class="resource-value" id="food">50</span></span></div>
+                <div class="resource"><span class="resource-icon">⚔️</span><span>兵力: <span class="resource-value" id="total-units">0</span></span></div>
+                <div class="resource"><span class="resource-icon">🏰</span><span>节点: <span class="resource-value" id="node-count">0</span></span></div>
+            </div>
+            <div class="turn-info">
+                <span>回合: <strong id="turn">1</strong></span>
+                <span id="phase">玩家回合</span>
+                <button class="turn-btn" id="endTurnBtn" onclick="endTurn()">结束回合</button>
+            </div>
+        </div>
+        <div class="main-area">
+            <div class="map-container"><div class="map" id="map"></div></div>
+            <div class="sidebar">
+                <div class="panel">
+                    <div style="margin-bottom:10px;">
+                        <label>AI难度: </label>
+                        <select id="difficulty" onchange="changeDifficulty()" style="padding:5px;border-radius:6px;background:#2d3748;color:#fff;border:1px solid #4a5568;">
+                            <option value="easy">简单</option>
+                            <option value="normal" selected>普通</option>
+                            <option value="hard">困难</option>
+                        </select>
+                    </div>
+                    <h3>📍 节点信息</h3>
+                    <div class="panel-content" id="nodeInfo"><p>点击一个节点查看详情</p></div>
+                </div>
+                <div class="panel">
+                    <h3>🎮 行动</h3>
+                    <div class="panel-content" id="actions"><p>选择节点后进行操作</p></div>
+                </div>
+                <div class="panel">
+                    <h3>📝 游戏日志</h3>
+                    <div class="log" id="gameLog"><div class="log-entry">游戏开始！占领所有节点获得胜利。</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="ai-thinking" id="aiThinking">👹 AI思考中...</div>
+    <div class="victory-modal" id="victoryModal">
+        <div class="modal-content">
+            <h2>🏆 胜利！</h2>
+            <p>你征服了所有节点！</p>
+            <p>回合数: <span id="victoryTurns"></span> | 难度: <span id="victoryDiff"></span></p>
+            <button onclick="location.reload()">再来一局</button>
+        </div>
+    </div>
+    <div class="defeat-modal" id="defeatModal">
+        <div class="modal-content">
+            <h2>💀 失败</h2>
+            <p>你的帝国已经覆灭...</p>
+            <button onclick="location.reload()">再来一局</button>
+        </div>
+    </div>
+
+<script>
+const MAP_WIDTH = 8, MAP_HEIGHT = 6;
+const NODE_TYPES = {
+    CAPITAL: { icon: '🏰', name: '主城', produce: null },
+    FARM: { icon: '🌾', name: '农场', produce: 'food', amount: 12 },
+    MINE: { icon: '⛏️', name: '矿场', produce: 'gold', amount: 12 },
+    BARRACKS: { icon: '⚔️', name: '兵营', produce: 'units', amount: 3 },
+    VILLAGE: { icon: '🏘️', name: '村庄', produce: null }
+};
+
+const AI_DIFFICULTY = {
+    easy: { aggression: 0.4, recruitChance: 0.3 },
+    normal: { aggression: 0.7, recruitChance: 0.6 },
+    hard: { aggression: 0.9, recruitChance: 0.85 }
+};
+
+let gameState = {
+    turn: 1,
+    playerResources: { gold: 100, food: 50 },
+    aiResources: { gold: 80, food: 40 },
+    selectedNode: null,
+    nodes: [],
+    gameOver: false,
+    difficulty: 'normal'
+};
+
+function initMap() {
+    const mapEl = document.getElementById('map');
+    mapEl.innerHTML = '';
+    gameState.nodes = [];
+    
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+            const node = createNode(x, y);
+            gameState.nodes.push(node);
+            
+            const nodeEl = document.createElement('div');
+            nodeEl.className = 'node neutral';
+            nodeEl.id = 'node-' + node.id;
+            nodeEl.innerHTML = getNodeHTML(node);
+            nodeEl.onclick = () => selectNode(node);
+            mapEl.appendChild(nodeEl);
+        }
+    }
+    
+    setupInitialTerritory();
+    updateDisplay();
+}
+
+function createNode(x, y) {
+    const types = [NODE_TYPES.FARM, NODE_TYPES.MINE, NODE_TYPES.BARRACKS, NODE_TYPES.VILLAGE];
+    const isCap = (x === 0 && y === 0) || (x === MAP_WIDTH-1 && y === MAP_HEIGHT-1);
+    const type = isCap ? NODE_TYPES.CAPITAL : types[Math.floor(Math.random() * types.length)];
+    return {
+        id: y * MAP_WIDTH + x,
+        x, y,
+        type: type,
+        owner: null,
+        units: type === NODE_TYPES.CAPITAL ? 12 : Math.floor(Math.random() * 4) + 2,
+        isolated: false
+    };
+}
+
+function getNodeHTML(node) {
+    const supplyColor = node.isolated ? '#fc8181' : '#48bb78';
+    return `<div class="node-type">${node.type.icon}</div>
+            <div class="node-units">${node.units}</div>
+            <div class="node-supply" style="color:${supplyColor}">●</div>`;
+}
+
+function setupInitialTerritory() {
+    const playerStart = [0, 1, MAP_WIDTH, MAP_WIDTH+1, MAP_WIDTH*2];
+    playerStart.forEach(id => {
+        if(gameState.nodes[id]) {
+            gameState.nodes[id].owner = 'player';
+            gameState.nodes[id].units = 4;
+        }
+    });
+    
+    const enemyStart = [
+        MAP_WIDTH*MAP_HEIGHT-1,
+        MAP_WIDTH*MAP_HEIGHT-2,
+        MAP_WIDTH*(MAP_HEIGHT-1)-1,
+        MAP_WIDTH*(MAP_HEIGHT-1)-2,
+        MAP_WIDTH*(MAP_HEIGHT-2)-1
+    ];
+    enemyStart.forEach(id => {
+        if(gameState.nodes[id]) {
+            gameState.nodes[id].owner = 'enemy';
+            gameState.nodes[id].units = 4;
+        }
+    });
+    
+    updateSupplyLines();
+}
+
+function getNeighbors(node) {
+    const neighbors = [];
+    const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+    for (const [dx, dy] of dirs) {
+        const nx = node.x + dx, ny = node.y + dy;
+        if (nx >= 0 && nx < MAP_WIDTH && ny >= 0 && ny < MAP_HEIGHT) {
+            neighbors.push(gameState.nodes[ny * MAP_WIDTH + nx]);
+        }
+    }
+    return neighbors;
+}
+
+function updateSupplyLines() {
+    ['player', 'enemy'].forEach(faction => {
+        const capital = gameState.nodes.find(n => n.owner === faction && n.type === NODE_TYPES.CAPITAL);
+        if (!capital) {
+            gameState.nodes.forEach(n => { if (n.owner === faction) n.isolated = true; });
+            return;
+        }
+        
+        const connected = new Set();
+        const queue = [capital];
+        connected.add(capital.id);
+        
+        while (queue.length > 0) {
+            const current = queue.shift();
+            getNeighbors(current).forEach(neighbor => {
+                if (neighbor.owner === faction && !connected.has(neighbor.id)) {
+                    connected.add(neighbor.id);
+                    queue.push(neighbor);
+                }
+            });
+        }
+        
+        gameState.nodes.forEach(node => {
+            if (node.owner === faction) node.isolated = !connected.has(node.id);
+        });
+    });
+    updateNodeDisplay();
+}
+
+function selectNode(node) {
+    if (gameState.gameOver) return;
+    
+    document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+    
+    if (gameState.selectedNode && gameState.selectedNode !== node) {
+        const neighbors = getNeighbors(gameState.selectedNode);
+        if (neighbors.includes(node) && gameState.selectedNode.owner === 'player') {
+            if (node.owner === 'player') showTradePanel(gameState.selectedNode, node);
+            else attack(gameState.selectedNode, node);
+        }
+        gameState.selectedNode = null;
+        updateNodeInfo();
+        updateActions();
+        return;
+    }
+    
+    gameState.selectedNode = node;
+    document.getElementById('node-' + node.id).classList.add('selected');
+    updateNodeInfo();
+    updateActions();
+}
+
+function updateNodeInfo() {
+    const infoEl = document.getElementById('nodeInfo');
+    const node = gameState.selectedNode;
+    
+    if (!node) {
+        infoEl.innerHTML = '<p>点击一个节点查看详情</p>';
+        return;
+    }
+    
+    const ownerText = node.owner === 'player' ? '👤 你' : 
+                     node.owner === 'enemy' ? '👹 敌人' : '⚪ 中立';
+    const statusBadge = node.owner ? 
+        (node.isolated ? '<span class="status-badge isolated">孤立</span>' : 
+                        '<span class="status-badge supply">补给正常</span>') : '';
+    const produceInfo = node.type.produce ? 
+        `<p><span class="label">产出:</span> <span class="value">${node.type.amount} ${
+            node.type.produce === 'gold' ? '金币' : 
+            node.type.produce === 'food' ? '粮食' : '兵力'
+        }/回合</span></p>` : '';
+    
+    infoEl.innerHTML = `
+        <p><span class="label">类型:</span> <span class="value">${node.type.icon} ${node.type.name}</span> ${statusBadge}</p>
+        <p><span class="label">归属:</span> <span class="value">${ownerText}</span></p>
+        <p><span class="label">兵力:</span> <span class="value">${node.units}</span></p>
+        ${produceInfo}
+        <p><span class="label">位置:</span> <span class="value">(${node.x}, ${node.y})</span></p>`;
+}
+
+function updateActions() {
+    const actionsEl = document.getElementById('actions');
+    const node = gameState.selectedNode;
+    
+    if (!node || node.owner !== 'player') {
+        actionsEl.innerHTML = node ? '<p>只能选择己方节点</p>' : '<p>选择节点后进行操作</p>';
+        return;
+    }
+    
+    const neighbors = getNeighbors(node);
+    const enemyNeighbors = neighbors.filter(n => n.owner !== 'player');
+    const allyNeighbors = neighbors.filter(n => n.owner === 'player' && n !== node);
+    
+    let html = '';
+    if (enemyNeighbors.length > 0) {
+        html += '<p>⚔️ 可进攻目标:</p>';
+        enemyNeighbors.forEach(n => {
+            const owner = n.owner === 'enemy' ? '👹' : '⚪';
+            const adv = node.units > n.units + 3 ? '✅优势' : 
+                       node.units > n.units ? '⚡均势' : '⚠️劣势';
+            html += `<p style="margin-left:10px;font-size:12px">${owner} (${n.x},${n.y}) 守军:${n.units} ${adv}</p>`;
+        });
+    }
+    if (allyNeighbors.length > 0) {
+        html += '<p style="margin-top:10px">🤝 可运输兵力至:</p>';
+        allyNeighbors.forEach(n => {
+            html += `<p style="margin-left:10px;font-size:12px">👤 (${n.x},${n.y}) ${n.type.name}</p>`;
+        });
+    }
+    
+    const recruitCost = 10;
+    const canRecruit = gameState.playerResources.gold >= recruitCost && !node.isolated;
+    html += `<button class="action-btn produce" onclick="recruit(${node.id})" ${!canRecruit ? 'disabled' : ''}>💰 征兵 (+3单位) - ${recruitCost}金币</button>`;
+    if (node.isolated) html += '<p style="color:#fc8181;font-size:11px">❌ 孤立状态无法征兵</p>';
+    
+    actionsEl.innerHTML = html;
+}
+
+let tradeFromNode = null, tradeToNode = null;
+function showTradePanel(fromNode, toNode) {
+    tradeFromNode = fromNode;
+    tradeToNode = toNode;
+    const maxUnits = Math.max(0, fromNode.units - 1);
+    document.getElementById('actions').innerHTML = `
+        <h4>💱 兵力运输</h4>
+        <p style="font-size:12px">从 (${fromNode.x},${fromNode.y}) → (${toNode.x},${toNode.y})</p>
+        <p>运输数量:</p>
+        <input type="range" min="0" max="${maxUnits}" value="0" id="tradeUnits" 
+               oninput="document.getElementById('unitVal').textContent = this.value">
+        <p><span id="unitVal">0</span> 单位</p>
+        <button class="action-btn trade" onclick="executeTrade()">执行运输</button>
+        <button class="action-btn" onclick="cancelTrade()" style="background:#4a5568;margin-top:8px">取消</button>`;
+}
+
+function cancelTrade() {
+    tradeFromNode = null;
+    tradeToNode = null;
+    gameState.selectedNode = null;
+    document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+    updateNodeInfo();
+    updateActions();
+}
+
+function executeTrade() {
+    if (!tradeFromNode || !tradeToNode) return;
+    const units = parseInt(document.getElementById('tradeUnits').value);
+    if (units > 0 && tradeFromNode.units > units) {
+        tradeFromNode.units -= units;
+        tradeToNode.units += units;
+        log(`💱 运输 ${units} 单位兵力到 (${tradeToNode.x},${tradeToNode.y})`, 'trade');
+        updateDisplay();
+    }
+    cancelTrade();
+}
+
+function showAttackLine(fromNode, toNode) {
+    const map = document.getElementById('map');
+    const fromEl = document.getElementById('node-' + fromNode.id);
+    const toEl = document.getElementById('node-' + toNode.id);
+    const line = document.createElement('div');
+    line.className = 'attack-line';
+    
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const mapRect = map.getBoundingClientRect();
+    
+    const x1 = fromRect.left + fromRect.width/2 - mapRect.left;
+    const y1 = fromRect.top + fromRect.height/2 - mapRect.top;
+    const x2 = toRect.left + toRect.width/2 - mapRect.left;
+    const y2 = toRect.top + toRect.height/2 - mapRect.top;
+    
+    const length = Math.sqrt(Math.pow(x2-x1, 2) + Math.pow(y2-y1, 2));
+    const angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
+    
+    line.style.width = length + 'px';
+    line.style.left = x1 + 'px';
+    line.style.top = y1 + 'px';
+    line.style.transform = 'rotate(' + angle + 'deg)';
+    
+    map.appendChild(line);
+    setTimeout(() => { if(line.parentNode) line.parentNode.removeChild(line); }, 600);
+}
+
+function attack(fromNode, toNode) {
+    if (fromNode.units <= 1) {
+        log('⚠️ 需要至少2单位兵力才能进攻');
+        return;
+    }
+    
+    showAttackLine(fromNode, toNode);
+    document.getElementById('node-' + fromNode.id).classList.add('attacking');
+    document.getElementById('node-' + toNode.id).classList.add('defending');
+    
+    setTimeout(() => {
+        document.getElementById('node-' + fromNode.id).classList.remove('attacking');
+        document.getElementById('node-' + toNode.id).classList.remove('defending');
+    }, 500);
+    
+    const attackUnits = fromNode.units - 1;
+    const attackPower = attackUnits * (1 + Math.random() * 0.5);
+    const defensePower = toNode.units * (1 + Math.random() * 0.3);
+    
+    log(`⚔️ 进攻! (${fromNode.x},${fromNode.y}) → (${toNode.x},${toNode.y})`, 'battle');
+    
+    if (attackPower > defensePower) {
+        const losses = Math.floor(attackUnits * (0.2 + Math.random() * 0.2));
+        fromNode.units = 1 + losses;
+        toNode.owner = 'player';
+        toNode.units = Math.max(1, attackUnits - losses);
+        
+        setTimeout(() => {
+            document.getElementById('node-' + toNode.id).classList.add('captured');
+            setTimeout(() => document.getElementById('node-' + toNode.id).classList.remove('captured'), 600);
+        }, 100);
+        
+        log(`✅ 胜利! 占领 (${toNode.x},${toNode.y}) 损失${losses}单位`, 'battle');
+        updateSupplyLines();
+        checkVictory();
+    } else {
+        const losses = Math.floor(attackUnits * (0.4 + Math.random() * 0.3));
+        fromNode.units = 1 + (attackUnits - losses);
+        toNode.units = Math.max(1, Math.floor(toNode.units * (0.6 + Math.random() * 0.2)));
+        log(`❌ 失败! 损失${losses}单位`, 'battle');
+    }
+    updateDisplay();
+}
+
+function recruit(nodeId) {
+    const node = gameState.nodes[nodeId];
+    if (gameState.playerResources.gold >= 10 && !node.isolated) {
+        gameState.playerResources.gold -= 10;
+        node.units += 3;
+        log(`👥 在(${node.x},${node.y})征召3单位兵力`);
+        updateDisplay();
+        updateActions();
+    }
+}
+
+function changeDifficulty() {
+    gameState.difficulty = document.getElementById('difficulty').value;
+}
+
+function endTurn() {
+    if (gameState.gameOver) return;
+    
+    document.getElementById('endTurnBtn').disabled = true;
+    document.getElementById('phase').textContent = '敌方回合';
+    document.getElementById('aiThinking').classList.add('show');
+    
+    gameState.selectedNode = null;
+    document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+    updateNodeInfo();
+    updateActions();
+    
+    productionPhase();
+    
+    setTimeout(() => {
+        executeAI();
+        document.getElementById('aiThinking').classList.remove('show');
+        
+        gameState.turn++;
+        document.getElementById('turn').textContent = gameState.turn;
+        document.getElementById('phase').textContent = '玩家回合';
+        document.getElementById('endTurnBtn').disabled = false;
+        
+        updateSupplyLines();
+        updateDisplay();
+        updateNodeInfo();
+        updateActions();
+        checkDefeat();
+    }, 1500);
+}
+
+function productionPhase() {
+    gameState.nodes.forEach(node => {
+        if (node.owner && !node.isolated && node.type.produce) {
+            if (node.owner === 'player') {
+                if (node.type.produce === 'gold') gameState.playerResources.gold += node.type.amount;
+                else if (node.type.produce === 'food') gameState.playerResources.food += node.type.amount;
+                else if (node.type.produce === 'units') node.units += node.type.amount;
+            } else {
+                if (node.type.produce === 'units') node.units += node.type.amount;
+            }
+        }
+        if (node.isolated && node.owner) {
+            node.units = Math.max(1, node.units - 1);
+        }
+    });
+    log(`📦 第${gameState.turn}回合生产完成`);
+}
+
+function executeAI() {
+    const diff = AI_DIFFICULTY[gameState.difficulty];
+    const aiNodes = gameState.nodes.filter(n => n.owner === 'enemy');
+    if (aiNodes.length === 0) return;
+    
+    let actions = [];
+    
+    // 1. 招募阶段
+    aiNodes.forEach(node => {
+        if (!node.isolated && node.type === NODE_TYPES.BARRACKS && Math.random() < diff.recruitChance) {
+            if (gameState.aiResources.gold >= 10) {
+                gameState.aiResources.gold -= 10;
+                node.units += 3;
+            }
+        }
+    });
+    
+    // 2. 防守首都
+    const capital = aiNodes.find(n => n.type === NODE_TYPES.CAPITAL);
+    if (capital) {
+        const threats = getNeighbors(capital).filter(n => 
+            n.owner === 'player' && n.units >= capital.units - 2
+        );
+        if (threats.length > 0) {
+            aiNodes.forEach(n => {
+                if (n !== capital && getNeighbors(n).includes(capital) && n.units > 4) {
+                    const transfer = Math.floor(n.units / 2);
+                    n.units -= transfer;
+                    capital.units += transfer;
+                }
+            });
+        }
+    }
+    
+    // 3. 进攻决策 - 智能评估每个目标
+    const attackOptions = [];
+    aiNodes.forEach(node => {
+        if (node.units <= 2) return;
+        getNeighbors(node).forEach(target => {
+            if (target.owner !== 'enemy') {
+                const advantage = node.units - target.units;
+                const targetValue = (target.type === NODE_TYPES.CAPITAL ? 100 : 
+                                    target.type === NODE_TYPES.BARRACKS ? 30 :
+                                    target.type === NODE_TYPES.MINE ? 25 :
+                                    target.type === NODE_TYPES.FARM ? 20 : 10) + 
+                                    (target.owner === 'player' ? 15 : 0);
+                const isolationBonus = target.owner === 'player' && target.isolated ? 20 : 0;
+                const score = advantage * 2 + targetValue + isolationBonus;
+                attackOptions.push({ from: node, to: target, score, advantage });
+            }
+        });
+    });
+    
+    // 按分数排序并执行攻击
+    attackOptions.sort((a, b) => b.score - a.score);
+    const usedNodes = new Set();
+    
+    attackOptions.forEach(opt => {
+        if (usedNodes.has(opt.from.id) || opt.from.units <= 2) return;
+        if (opt.advantage < -2 && Math.random() > diff.aggression) return;
+        if (opt.advantage < 0 && opt.to.type !== NODE_TYPES.CAPITAL) return;
+        
+        usedNodes.add(opt.from.id);
+        
+        // 执行攻击动画
+        setTimeout(() => showAttackLine(opt.from, opt.to), Math.random() * 500);
+        
+        const attackUnits = Math.min(opt.from.units - 1, Math.floor(opt.from.units * (0.6 + Math.random() * 0.3)));
+        opt.from.units -= attackUnits;
+        
+        const attackPower = attackUnits * (1 + Math.random() * 0.4) * diff.aggression;
+        const defensePower = opt.to.units * (1 + Math.random() * 0.3);
+        
+        if (attackPower > defensePower) {
+            opt.to.owner = 'enemy';
+            opt.to.units = Math.max(1, Math.floor(attackUnits * 0.6));
+            actions.push({ type: 'capture', target: opt.to });
+        } else {
+            opt.to.units = Math.max(1, Math.floor(opt.to.units * 0.7));
+            actions.push({ type: 'attack', target: opt.to });
+        }
+    });
+    
+    // 记录AI行动
+    const captures = actions.filter(a => a.type === 'capture').length;
+    const attacks = actions.filter(a => a.type === 'attack').length;
+    if (captures > 0) log(`👹 AI占领${captures}个节点!`, 'ai');
+    if (attacks > 0) log(`👹 AI发起${attacks}次进攻`, 'ai');
+    if (actions.length === 0) log('👹 AI选择防守发展', 'ai');
+    
+    updateSupplyLines();
+}
+
+function updateDisplay() {
+    document.getElementById('gold').textContent = gameState.playerResources.gold;
+    document.getElementById('food').textContent = gameState.playerResources.food;
+    const playerNodes = gameState.nodes.filter(n => n.owner === 'player');
+    document.getElementById('total-units').textContent = playerNodes.reduce((s, n) => s + n.units, 0);
+    document.getElementById('node-count').textContent = playerNodes.length + '/' + gameState.nodes.length;
+    updateNodeDisplay();
+}
+
+function updateNodeDisplay() {
+    gameState.nodes.forEach(node => {
+        const el = document.getElementById('node-' + node.id);
+        el.className = 'node';
+        if (node.owner === 'player') el.classList.add('player');
+        else if (node.owner === 'enemy') el.classList.add('enemy');
+        else el.classList.add('neutral');
+        if (node.isolated) el.classList.add('isolated');
+        if (gameState.selectedNode === node) el.classList.add('selected');
+        el.innerHTML = getNodeHTML(node);
+    });
+}
+
+function log(message, type) {
+    const logEl = document.getElementById('gameLog');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry' + (type ? ' ' + type : '');
+    entry.textContent = message;
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function checkVictory() {
+    const enemyNodes = gameState.nodes.filter(n => n.owner === 'enemy');
+    if (enemyNodes.length === 0) {
+        gameState.gameOver = true;
+        document.getElementById('victoryTurns').textContent = gameState.turn;
+        document.getElementById('victoryDiff').textContent = 
+            gameState.difficulty === 'easy' ? '简单' : 
+            gameState.difficulty === 'normal' ? '普通' : '困难';
+        document.getElementById('victoryModal').classList.add('show');
+    }
+}
+
+function checkDefeat() {
+    const playerNodes = gameState.nodes.filter(n => n.owner === 'player');
+    if (playerNodes.length === 0) {
+        gameState.gameOver = true;
+        document.getElementById('defeatModal').classList.add('show');
+    }
+}
+
+window.onload = initMap;
+</script>
+</body>
+</html>
